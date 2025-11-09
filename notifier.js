@@ -63,12 +63,11 @@ async function processLogLine(line) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
-    Ringkas dalam 1 kalimat untuk notifikasi WhatsApp:
-    Terjadi upaya SQL injection di server.
+    Buatkan pesan peringatan ada serangan SQL Injection dengan total dengan data berikut!
     - IP: ${ip}
     - Endpoint: ${uri}
     - Payload: ${payload}
-    Gunakan bahasa Indonesia, formal, dan sertakan emoji peringatan.
+    Gunakan bahasa Indonesia, formal, sertakan emoji peringatan dan buat profesional.
   `;
 
   try {
@@ -97,6 +96,7 @@ const watcher = chokidar.watch(LOG_PATH, {
 watcher.on('change', (path) => {
   try {
     const lines = fs.readFileSync(path, 'utf8').split('\n');
+    console.log(lines);
     const lastLine = lines[lines.length - 2];
     if (lastLine) {
       processLogLine(lastLine);
