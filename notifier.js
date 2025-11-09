@@ -49,13 +49,18 @@ async function processLogLine(line) {
   if (!line.includes('942100') || !line.includes('SQL Injection')) return;
 
   // Ekstrak data dari log
-  const payloadMatch = line.match(/json\.username:\s*([^]]+)/);
+  // 🔍 Ekstrak payload dari ARGS (misalnya "ARGS:json.username: Test' or '10' = '10")
+  const payloadMatch =
+    line.match(/ARGS:(?:json\.|args\.|[\w.-]+:)?\s*([^"'\]]+)/i) ||
+    line.match(/Matched Data:\s*([^"]+)/i);
+
   const ipMatch = line.match(/client_ip":\s*"([^"]+)"/);
   const uriMatch = line.match(/uri ": "([^"]+)"/);
 
   const payload = payloadMatch ? payloadMatch[1].trim() : 'tidak diketahui';
   const ip = ipMatch ? ipMatch[1] : 'unknown';
   const uri = uriMatch ? uriMatch[1] : '/';
+  const time = new Date().toISOString();
 
   console.log(`🔍 Serangan terdeteksi dari ${ip} ke ${uri}`);
 
@@ -63,11 +68,18 @@ async function processLogLine(line) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
-    Buatkan pesan peringatan ada serangan SQL Injection dengan total dengan data berikut!
-    - IP: ${ip}
-    - Endpoint: ${uri}
-    - Payload: ${payload}
-    Gunakan bahasa Indonesia, formal, sertakan emoji peringatan dan buat profesional.
+  Kamu adalah asisten incident response. Buat NOTIFIKASI singkat, profesional, dan langsung ke poin (tidak perlu salam panjang atau penutup formal).
+  Gunakan bahasa Indonesia yang tegas tapi tidak bertele-tele. Sertakan:
+  - Ringkasan singkat insiden (jenis, IP sumber, endpoint, payload, waktu deteksi).
+  - Risiko singkat (2–3 baris).
+  - LANGSUNG beri beberapa opsi perintah shell Ubuntu yang dapat dicopy-paste untuk
+    1) memblokir IP sementara dan permanen (ufw, ipset+iptables),
+    2) memblokir di level nginx (deny),
+    3) menambahkan ke fail2ban (jika tersedia) — sertakan contoh perintah fail2ban-client,
+    4) perintah untuk cek log cepat (grep/tail).
+  Untuk setiap opsi shell: berikan 1) perintahnya (paste-ready), 2) penjelasan 1 baris apa yang dilakukan, dan 3) perintah untuk membatalkan/unban (jika relevan).
+  Masukkan placeholder berikut yang sudah diisi: IP: ${ip}, Endpoint: ${uri}, Payload: ${payload}, Waktu: ${time}.
+  Jangan tambahkan salam/penutup formal. Akhiri dengan satu baris singkat: "Tindakan cepat disarankan: pilih opsi dan jalankan.".
   `;
 
   try {
