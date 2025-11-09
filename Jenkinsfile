@@ -20,38 +20,39 @@ pipeline {
         stage('Deploy to VPS') {
             steps {
                 sh '''
-                    # Hentikan service
-                    systemctl --user stop sqli-notifier || true
+                    # Hentikan service lama
+                    sudo systemctl stop sqli-notifier || true
 
-                    # Deploy (tanpa sudo, karena folder milik jenkins)
-                    rsync -av --delete ./ $NOTIFIER_DIR/
+                    # Deploy
+                    sudo rsync -av --delete ./ $NOTIFIER_DIR/
 
                     cd $NOTIFIER_DIR
 
-                    # Install dependensi
-                    npm install --no-fund --no-audit
+                    # Install
+                    sudo -u jenkins npm install --no-fund --no-audit
 
                     # Buat .env
-                    cat > .env <<EOL
+                    sudo -u jenkins cat > .env <<EOL
 GEMINI_API_KEY=$GEMINI_API_KEY
 FONNTE_TOKEN=$FONNTE_TOKEN
 WHATSAPP_TARGET=$WHATSAPP_TARGET
 LOG_PATH=/var/log/modsec_audit.log
 EOL
 
-                    chmod 600 .env
+                    sudo chmod 600 .env
+                    sudo chown jenkins:jenkins .env
 
-                    # Mulai ulang service
-                    systemctl --user daemon-reload
-                    systemctl --user enable --now sqli-notifier
+                    # Reload systemd & jalankan
+                    sudo systemctl daemon-reload
+                    sudo systemctl enable --now sqli-notifier
                 '''
             }
         }
 
         stage('Verify') {
             steps {
-                sh 'systemctl --user is-active sqli-notifier'
-                sh 'journalctl --user -u sqli-notifier -n 10 --no-pager'
+                sh 'sudo systemctl is-active sqli-notifier'
+                sh 'sudo journalctl -u sqli-notifier -n 10 --no-pager'
             }
         }
     }
