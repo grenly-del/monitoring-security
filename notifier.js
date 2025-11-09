@@ -1,42 +1,46 @@
 // /opt/sqli-notifier/notifier.js
 require('dotenv').config();
 const fs = require('fs');
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // ✅ Nama package benar
 const axios = require('axios');
 const chokidar = require('chokidar');
 
 // Konfigurasi
 const LOG_PATH = process.env.LOG_PATH || '/var/log/modsec_audit.log';
-const GEMINI_API_KEY = process.env.GEMINI_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_KEY; // Sesuaikan dengan .env
 const WHATSAPP_TARGET = process.env.WHATSAPP_TARGET;
 const FONNTE_TOKEN = process.env.TOKEN_FONTE;
 
 if (!GEMINI_API_KEY || !FONNTE_TOKEN || !WHATSAPP_TARGET) {
-  console.error('❌ Error: Pastikan GEMINI_API_KEY, FONNTE_TOKEN, dan WHATSAPP_TARGET diatur di .env');
+  console.error('❌ Error: Pastikan GEMINI_KEY, TOKEN_FONTE, dan WHATSAPP_TARGET diatur di .env');
   process.exit(1);
 }
 
-// Inisialisasi Google Generative AI
-const genAI = new GoogleGenAI({apiKey: GEMINI_API_KEY});
+// ✅ Inisialisasi benar
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
 // Fungsi: kirim ke Fonnte
 async function sendWhatsApp(message) {
   try {
-    // Hapus spasi ekstra di URL
+    // ✅ Hapus spasi di URL
     const response = await axios.post('https://api.fonnte.com/send',
       new URLSearchParams({
         target: WHATSAPP_TARGET,
-        message: message
+        message: message,
       }),
       {
         headers: {
-          'Authorization': FONNTE_TOKEN,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+          Authorization: FONNTE_TOKEN,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
       }
     );
     console.log('✅ WhatsApp terkirim:', response.data);
   } catch (error) {
     console.error('❌ Gagal kirim WhatsApp:', error.message);
+    if (error.response) {
+      console.error('Response error:', JSON.stringify(error.response.data));
+    }
   }
 }
 
@@ -55,7 +59,9 @@ async function processLogLine(line) {
 
   console.log(`🔍 Serangan terdeteksi dari ${ip} ke ${uri}`);
 
-  // Gunakan model Gemini
+  // ✅ Gunakan model yang tersedia
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
   const prompt = `
     Ringkas dalam 1 kalimat untuk notifikasi WhatsApp:
     Terjadi upaya SQL injection di server.
@@ -66,11 +72,9 @@ async function processLogLine(line) {
   `;
 
   try {
-    const response = await genAI.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-    });
-    const summary = response.text().trim();
+    // ✅ Sintaks generateContent yang benar
+    const result = await model.generateContent(prompt);
+    const summary = result.response.text().trim();
     await sendWhatsApp(summary);
   } catch (geminiError) {
     console.error('❌ Error Gemini:', geminiError.message);
@@ -86,15 +90,19 @@ const watcher = chokidar.watch(LOG_PATH, {
   followSymlinks: true,
   awaitWriteFinish: {
     stabilityThreshold: 1000,
-    pollInterval: 500
-  }
+    pollInterval: 500,
+  },
 });
 
 watcher.on('change', (path) => {
-  const lines = fs.readFileSync(path, 'utf8').split('\n');
-  const lastLine = lines[lines.length - 2];
-  if (lastLine) {
-    processLogLine(lastLine);
+  try {
+    const lines = fs.readFileSync(path, 'utf8').split('\n');
+    const lastLine = lines[lines.length - 2];
+    if (lastLine) {
+      processLogLine(lastLine);
+    }
+  } catch (readError) {
+    console.error('❌ Gagal membaca file log:', readError.message);
   }
 });
 
