@@ -18,36 +18,37 @@ pipeline {
         }
 
         stage('Deploy to VPS') {
-            steps {
-                sh '''
-                    # Hentikan service lama
-                    sudo systemctl stop sqli-notifier || true
+                steps {
+                    sh '''
+                        sudo systemctl stop sqli-notifier || true
 
-                    # Deploy
-                    sudo rsync -av --delete ./ $NOTIFIER_DIR/
+                        # Pastikan folder dimiliki oleh jenkins
+                        sudo chown -R jenkins:jenkins /opt/sqli-notifier
 
-                    cd $NOTIFIER_DIR
+                        # Deploy sebagai root, lalu ganti ke jenkins
+                        sudo rsync -av --delete ./ /opt/sqli-notifier/
 
-                    # Install
-                    sudo -u jenkins npm install --no-fund --no-audit
+                        # Semua perintah berikut dijalankan LANGSUNG sebagai user jenkins (tanpa sudo)
+                        cd /opt/sqli-notifier
 
-                    # Buat .env
-                    sudo -u jenkins cat > .env <<EOL
-GEMINI_API_KEY=$GEMINI_API_KEY
-FONNTE_TOKEN=$FONNTE_TOKEN
-WHATSAPP_TARGET=$WHATSAPP_TARGET
-LOG_PATH=/var/log/modsec_audit.log
-EOL
+                        # Install sebagai jenkins
+                        npm install --no-fund --no-audit
 
-                    sudo chmod 600 .env
-                    sudo chown jenkins:jenkins .env
+                        # Buat .env tanpa sudo -u jenkins
+                        cat > .env <<EOL
+            GEMINI_API_KEY=$GEMINI_API_KEY
+            FONNTE_TOKEN=$FONNTE_TOKEN
+            WHATSAPP_TARGET=$WHATSAPP_TARGET
+            LOG_PATH=/var/log/modsec_audit.log
+            EOL
 
-                    # Reload systemd & jalankan
-                    sudo systemctl daemon-reload
-                    sudo systemctl enable --now sqli-notifier
-                '''
+                        chmod 600 .env
+
+                        sudo systemctl daemon-reload
+                        sudo systemctl enable --now sqli-notifier
+                    '''
+                }
             }
-        }
 
         stage('Verify') {
             steps {
