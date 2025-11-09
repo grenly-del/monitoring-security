@@ -8,7 +8,7 @@ const chokidar = require('chokidar');
 // Konfigurasi
 const LOG_PATH = process.env.LOG_PATH || '/var/log/modsec_audit.log';
 const GEMINI_API_KEY = process.env.GEMINI_KEY;
-const WHATSAPP_TARGET = '082187199940';
+const WHATSAPP_TARGET = process.env.WHATSAPP_TARGET;
 const FONNTE_TOKEN = process.env.TOKEN_FONTE;
 
 if (!GEMINI_API_KEY || !FONNTE_TOKEN || !WHATSAPP_TARGET) {

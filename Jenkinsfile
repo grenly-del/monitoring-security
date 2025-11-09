@@ -3,9 +3,6 @@ pipeline {
 
     environment {
         NOTIFIER_DIR = '/opt/sqli-notifier'
-        GEMINI_API_KEY = credentials('GEMINI_API_KEY')
-        FONNTE_TOKEN   = credentials('FONNTE_TOKEN')
-        WHATSAPP_TARGET = credentials('WHATSAPP_TARGET')
     }
 
     stages {
@@ -18,30 +15,20 @@ pipeline {
         }
 
         stage('Deploy to VPS') {
-                steps {
+            steps {
+                withCredentials([file(credentialsId: 'SQLI_NOTIFIER_ENV', variable: 'ENV_FILE')]) {
                     sh '''
                         sudo systemctl stop sqli-notifier || true
 
-                        # Pastikan folder dimiliki oleh jenkins
                         sudo chown -R jenkins:jenkins /opt/sqli-notifier
-
-                        # Deploy sebagai root, lalu ganti ke jenkins
                         sudo rsync -av --delete ./ /opt/sqli-notifier/
 
-                        # Semua perintah berikut dijalankan LANGSUNG sebagai user jenkins (tanpa sudo)
                         cd /opt/sqli-notifier
 
-                        # Install sebagai jenkins
                         npm install --no-fund --no-audit
 
-                        # Buat .env tanpa sudo -u jenkins
-                        cat > .env <<EOL
-            GEMINI_API_KEY=$GEMINI_API_KEY
-            FONNTE_TOKEN=$FONNTE_TOKEN
-            WHATSAPP_TARGET=$WHATSAPP_TARGET
-            LOG_PATH=/var/log/modsec_audit.log
-            EOL
-
+                        # Salin secret file .env ke direktori aplikasi
+                        cp "$ENV_FILE" .env
                         chmod 600 .env
 
                         sudo systemctl daemon-reload
@@ -49,6 +36,7 @@ pipeline {
                     '''
                 }
             }
+        }
 
         stage('Verify') {
             steps {
