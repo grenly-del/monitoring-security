@@ -84,7 +84,7 @@ async function processLogLine(line) {
 }
 
 // Mulai pantau file log
-console.log('🟢 Memulai pemantauan log ModSecurity...');
+console.log('🟢 Memulai pemantauan log ModSecurity log...');
 const watcher = chokidar.watch(LOG_PATH, {
   persistent: true,
   followSymlinks: true,
