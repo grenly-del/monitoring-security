@@ -68,19 +68,13 @@ async function processLogLine(line) {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
-  Kamu adalah asisten incident response. Buat NOTIFIKASI singkat, profesional, dan langsung ke poin (tidak perlu salam panjang atau penutup formal).
-  Gunakan bahasa Indonesia yang tegas tapi tidak bertele-tele. Sertakan:
-  - Ringkasan singkat insiden (jenis, IP sumber, endpoint, payload, waktu deteksi).
-  - Risiko singkat (2–3 baris).
-  - LANGSUNG beri beberapa opsi perintah shell Ubuntu yang dapat dicopy-paste untuk
-    1) memblokir IP sementara dan permanen (ufw, ipset+iptables),
-    2) memblokir di level nginx (deny),
-    3) menambahkan ke fail2ban (jika tersedia) — sertakan contoh perintah fail2ban-client,
-    4) perintah untuk cek log cepat (grep/tail).
-  Untuk setiap opsi shell: berikan 1) perintahnya (paste-ready), 2) penjelasan 1 baris apa yang dilakukan, dan 3) perintah untuk membatalkan/unban (jika relevan).
-  Masukkan placeholder berikut yang sudah diisi: IP: ${ip}, Endpoint: ${uri}, Payload: ${payload}, Waktu: ${time}.
-  Jangan tambahkan salam/penutup formal. Akhiri dengan satu baris singkat: "Tindakan cepat disarankan: pilih opsi dan jalankan.".
-  `;
+Kamu adalah asisten incident response. Buat NOTIFIKASI singkat (maksimal 2 kalimat) tentang serangan SQL Injection.
+Gunakan bahasa Indonesia yang profesional dan langsung ke inti: sebutkan jenis serangan, IP sumber, endpoint, payload, dan waktu deteksi secara ringkas.
+Setelah itu, berikan hanya 3–4 baris perintah shell Ubuntu yang bisa langsung dipakai untuk memblokir IP (${ip}) menggunakan ufw, iptables, dan periksa log terkait.
+Tidak perlu penjelasan panjang, tidak perlu penutup. Output harus efisien dan bisa langsung di-copy.
+Gunakan data berikut: IP: ${ip}, Endpoint: ${uri}, Payload: ${payload}, Waktu: ${time}.
+Akhiri dengan kalimat: "Tindakan cepat disarankan.".
+`;
 
   try {
     // ✅ Sintaks generateContent yang benar
