@@ -60,7 +60,7 @@ async function processLogLine(line) {
   console.log(`🔍 Serangan terdeteksi dari ${ip} ke ${uri}`);
 
   // ✅ Gunakan model yang tersedia
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
     Ringkas dalam 1 kalimat untuk notifikasi WhatsApp:
