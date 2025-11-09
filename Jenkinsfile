@@ -12,7 +12,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'git@github.com:grenly-del/sqli-notifier.git',
+                    url: 'https://github.com/grenly-del/monitoring-security.git',
                     credentialsId: 'GITHUB_KEY'
             }
         }
