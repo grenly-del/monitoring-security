@@ -46,47 +46,71 @@ async function sendWhatsApp(message) {
 
 // Fungsi: proses log line
 async function processLogLine(line) {
-  if (!line.includes('942100') || !line.includes('SQL Injection')) return;
+  // Deteksi baris yang mengandung ModSecurity attack
+  // Biasanya ada "message", "ruleId", atau "Matched Data"
+  if (
+    !line.includes('"message"') &&
+    !line.includes('Matched Data') &&
+    !line.includes('"ruleId"')
+  ) {
+    return;
+  }
 
-  // Ekstrak data dari log
-  // 🔍 Ekstrak payload dari ARGS (misalnya "ARGS:json.username: Test' or '10' = '10")
+  // 🔍 Ekstrak jenis serangan
+  const attackMatch =
+    line.match(/"message":"([^"]+)"/) ||
+    line.match(/Matched Data:[^"]+/);
+
+  const attackType = attackMatch ? attackMatch[1] : 'Serangan tidak diketahui';
+
+  // 🔍 Ekstrak Payload
   const payloadMatch =
-    line.match(/ARGS:(?:json\.|args\.|[\w.-]+:)?\s*([^"'\]]+)/i) ||
-    line.match(/Matched Data:\s*([^"]+)/i);
+    line.match(/Matched Data:\s*([^"]+)/i) ||
+    line.match(/ARGS:(?:json\.|args\.|[\w.-]+:)?\s*([^"'\]]+)/i);
 
-  const ipMatch = line.match(/client_ip":\s*"([^"]+)"/);
-  const uriMatch = line.match(/uri ": "([^"]+)"/);
+  const payload = payloadMatch ? payloadMatch[1].trim() : 'payload tidak ditemukan';
 
-  const payload = payloadMatch ? payloadMatch[1].trim() : 'tidak diketahui';
+  // 🔍 Ekstrak IP
+  const ipMatch = line.match(/client_ip":"([^"]+)"/);
   const ip = ipMatch ? ipMatch[1] : 'unknown';
+
+  // 🔍 Ekstrak endpoint
+  const uriMatch = line.match(/"uri":"([^"]+)"/);
   const uri = uriMatch ? uriMatch[1] : '/';
+
+  // 🔍 Rule ID
+  const ruleMatch = line.match(/"ruleId":"?(\d{3,6})"?/);
+  const ruleId = ruleMatch ? ruleMatch[1] : 'unknown';
+
   const time = new Date().toISOString();
 
-  console.log(`🔍 Serangan terdeteksi dari ${ip} ke ${uri}`);
+  console.log(`⚠️ Serangan terdeteksi: ${attackType} dari ${ip} ke ${uri}`);
 
-  // ✅ Gunakan model yang tersedia
+  // ======================
+  //   🔥 AI Notification
+  // ======================
+
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
-Kamu adalah asisten incident response. Buat NOTIFIKASI singkat (maksimal 2 kalimat) tentang serangan SQL Injection.
-Gunakan bahasa Indonesia yang profesional dan langsung ke inti: sebutkan jenis serangan, IP sumber, endpoint, payload, dan waktu deteksi secara ringkas.
-Setelah itu, berikan hanya 3–4 baris perintah shell Ubuntu yang bisa langsung dipakai untuk memblokir IP (${ip}) menggunakan ufw, iptables, dan periksa log terkait.
-Tidak perlu penjelasan panjang, tidak perlu penutup. Output harus efisien dan bisa langsung di-copy.
-Gunakan data berikut: IP: ${ip}, Endpoint: ${uri}, Payload: ${payload}, Waktu: ${time}.
+Kamu adalah asisten incident response. Buat NOTIFIKASI singkat (maksimal 2 kalimat) tentang serangan yang terdeteksi oleh ModSecurity.
+Gunakan bahasa Indonesia profesional dan langsung ke inti: sebutkan jenis serangan ("${attackType}"), rule ID (${ruleId}), IP (${ip}), endpoint (${uri}), payload, dan waktu deteksi (${time}).
+Setelah itu, berikan 3–4 baris command Linux untuk memblokir IP (${ip}) menggunakan ufw/iptables beserta perintah melihat log.
+Tidak perlu penjelasan tambahan. Output harus ringkas dan bisa langsung di-copy.
 Akhiri dengan kalimat: "Tindakan cepat disarankan.".
 `;
 
   try {
-    // ✅ Sintaks generateContent yang benar
     const result = await model.generateContent(prompt);
     const summary = result.response.text().trim();
     await sendWhatsApp(summary);
   } catch (geminiError) {
     console.error('❌ Error Gemini:', geminiError.message);
-    const fallback = `⚠️ Serangan SQLi terdeteksi!\nIP: ${ip}\nURI: ${uri}`;
+    const fallback = `⚠️ Serangan terdeteksi!\nJenis: ${attackType}\nIP: ${ip}\nURI: ${uri}`;
     await sendWhatsApp(fallback);
   }
 }
+
 
 // Mulai pantau file log
 console.log('🟢 Memulai pemantauan log ModSecurity log...');
