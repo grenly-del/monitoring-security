@@ -1,119 +1,115 @@
-// /opt/sqli-notifier/notifier.js
+// /home/klabatdev/monitoring-security/notifier.js
 require('dotenv').config();
 const fs = require('fs');
-const { GoogleGenerativeAI } = require('@google/generative-ai'); // ✅ Nama package benar
 const axios = require('axios');
 const chokidar = require('chokidar');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Konfigurasi
+// ==================
+// ENV CONFIG
+// ==================
 const LOG_PATH = process.env.LOG_PATH || '/var/log/modsec_audit.log';
-const GEMINI_API_KEY = process.env.GEMINI_KEY; // Sesuaikan dengan .env
-const WHATSAPP_TARGET = process.env.WHATSAPP_TARGET;
-const FONNTE_TOKEN = process.env.TOKEN_FONTE;
+const GEMINI_API_KEY = process.env.GEMINI_KEY;
+const TG_BOT_TOKEN = process.env.TG_BOT_TOKEN;
+const TG_CHAT_ID = process.env.TG_CHAT_ID;
 
-if (!GEMINI_API_KEY || !FONNTE_TOKEN || !WHATSAPP_TARGET) {
-  console.error('❌ Error: Pastikan GEMINI_KEY, TOKEN_FONTE, dan WHATSAPP_TARGET diatur di .env');
+if (!GEMINI_API_KEY || !TG_BOT_TOKEN || !TG_CHAT_ID) {
+  console.error('❌ Error: GEMINI_KEY, TG_BOT_TOKEN, dan TG_CHAT_ID wajib diatur di .env');
   process.exit(1);
 }
 
-// ✅ Inisialisasi benar
+// ==================
+// INIT GEMINI
+// ==================
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// Fungsi: kirim ke Fonnte
-async function sendWhatsApp(message) {
+// ==================
+// TELEGRAM SENDER
+// ==================
+async function sendTelegram(message) {
   try {
-    // ✅ Hapus spasi di URL
-    const response = await axios.post('https://api.fonnte.com/send',
-      new URLSearchParams({
-        target: WHATSAPP_TARGET,
-        message: message,
-      }),
-      {
-        headers: {
-          Authorization: FONNTE_TOKEN,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      }
-    );
-    console.log('✅ WhatsApp terkirim:', response.data);
+    const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
+
+    const response = await axios.post(url, {
+      chat_id: TG_CHAT_ID,
+      text: message,
+      parse_mode: 'Markdown'
+    });
+
+    console.log('✅ Telegram terkirim:', response.data);
   } catch (error) {
-    console.error('❌ Gagal kirim WhatsApp:', error.message);
-    if (error.response) {
-      console.error('Response error:', JSON.stringify(error.response.data));
-    }
+    console.error('❌ Gagal kirim Telegram:', error.response?.data || error.message);
   }
 }
 
-// Fungsi: proses log line
-async function processLogLine(line) {
-  // Deteksi baris yang mengandung ModSecurity attack
-  // Biasanya ada "message", "ruleId", atau "Matched Data"
+// ==================
+// PROCESS LOG
+// ==================
+async function processLogLine(logBlock) {
   if (
-    !line.includes('"message"') &&
-    !line.includes('Matched Data') &&
-    !line.includes('"ruleId"')
-  ) {
-    return;
-  }
+    !logBlock.includes('"message"') &&
+    !logBlock.includes('Matched Data') &&
+    !logBlock.includes('"ruleId"')
+  ) return;
 
-  // 🔍 Ekstrak jenis serangan
-  const attackMatch =
-    line.match(/"message":"([^"]+)"/) ||
-    line.match(/Matched Data:[^"]+/);
+  const attackType =
+    logBlock.match(/"message":"([^"]+)"/)?.[1] || 'Serangan tidak diketahui';
 
-  const attackType = attackMatch ? attackMatch[1] : 'Serangan tidak diketahui';
+  const payload =
+    logBlock.match(/Matched Data:\s*([^"]+)/i)?.[1] || 'payload tidak ditemukan';
 
-  // 🔍 Ekstrak Payload
-  const payloadMatch =
-    line.match(/Matched Data:\s*([^"]+)/i) ||
-    line.match(/ARGS:(?:json\.|args\.|[\w.-]+:)?\s*([^"'\]]+)/i);
+  const ip =
+    logBlock.match(/client_ip":"([^"]+)"/)?.[1] || 'unknown';
 
-  const payload = payloadMatch ? payloadMatch[1].trim() : 'payload tidak ditemukan';
+  const uri =
+    logBlock.match(/"uri":"([^"]+)"/)?.[1] || '/';
 
-  // 🔍 Ekstrak IP
-  const ipMatch = line.match(/client_ip":"([^"]+)"/);
-  const ip = ipMatch ? ipMatch[1] : 'unknown';
-
-  // 🔍 Ekstrak endpoint
-  const uriMatch = line.match(/"uri":"([^"]+)"/);
-  const uri = uriMatch ? uriMatch[1] : '/';
-
-  // 🔍 Rule ID
-  const ruleMatch = line.match(/"ruleId":"?(\d{3,6})"?/);
-  const ruleId = ruleMatch ? ruleMatch[1] : 'unknown';
+  const ruleId =
+    logBlock.match(/"ruleId":"?(\d{3,6})"?/)?.[1] || 'unknown';
 
   const time = new Date().toISOString();
 
-  console.log(`⚠️ Serangan terdeteksi: ${attackType} dari ${ip} ke ${uri}`);
+  console.log(`⚠️ Serangan: ${attackType} | IP: ${ip}`);
 
-  // ======================
-  //   🔥 AI Notification
-  // ======================
-
+  // ==================
+  // GEMINI AI
+  // ==================
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `
-Kamu adalah asisten incident response. Buat NOTIFIKASI singkat (maksimal 2 kalimat) tentang serangan yang terdeteksi oleh ModSecurity.
-Gunakan bahasa Indonesia profesional dan langsung ke inti: sebutkan jenis serangan ("${attackType}"), rule ID (${ruleId}), IP (${ip}), endpoint (${uri}), payload, dan waktu deteksi (${time}).
-Setelah itu, berikan 3–4 baris command Linux untuk memblokir IP (${ip}) menggunakan ufw/iptables beserta perintah melihat log.
-Tidak perlu penjelasan tambahan. Output harus ringkas dan bisa langsung di-copy.
-Akhiri dengan kalimat: "Tindakan cepat disarankan.".
+Buat NOTIFIKASI keamanan SINGKAT untuk Telegram.
+
+Format:
+🚨 *MODSECURITY ALERT*
+
+• Serangan: ${attackType}
+• Rule ID: ${ruleId}
+• IP: ${ip}
+• Endpoint: ${uri}
+• Payload: ${payload}
+• Waktu: ${time}
+
+Lalu sertakan 3 command Linux untuk memblokir IP (${ip}) dan cek log.
+Akhiri dengan: "Tindakan cepat disarankan."
 `;
 
   try {
     const result = await model.generateContent(prompt);
-    const summary = result.response.text().trim();
-    await sendWhatsApp(summary);
-  } catch (geminiError) {
-    console.error('❌ Error Gemini:', geminiError.message);
-    const fallback = `⚠️ Serangan terdeteksi!\nJenis: ${attackType}\nIP: ${ip}\nURI: ${uri}`;
-    await sendWhatsApp(fallback);
+    const message = result.response.text().trim();
+    await sendTelegram(message);
+  } catch (err) {
+    console.error('❌ Gemini error:', err.message);
+    await sendTelegram(
+      `🚨 *MODSECURITY ALERT*\nIP: ${ip}\nEndpoint: ${uri}\nTindakan cepat disarankan.`
+    );
   }
 }
 
+// ==================
+// WATCH LOG FILE
+// ==================
+console.log('🟢 Memantau log ModSecurity...');
 
-// Mulai pantau file log
-console.log('🟢 Memulai pemantauan log ModSecurity log...');
 const watcher = chokidar.watch(LOG_PATH, {
   persistent: true,
   followSymlinks: true,
@@ -126,16 +122,13 @@ const watcher = chokidar.watch(LOG_PATH, {
 watcher.on('change', (path) => {
   try {
     const lines = fs.readFileSync(path, 'utf8').split('\n');
-    console.log(lines);
-    const lastLine = lines[lines.length - 2];
-    if (lastLine) {
-      processLogLine(lastLine);
-    }
-  } catch (readError) {
-    console.error('❌ Gagal membaca file log:', readError.message);
+    const lastBlock = lines.slice(-15).join('\n'); // 🔥 penting (multiline log)
+    processLogLine(lastBlock);
+  } catch (err) {
+    console.error('❌ Gagal baca log:', err.message);
   }
 });
 
 watcher.on('error', (error) => {
-  console.error('❌ Error memantau log:', error);
+  console.error('❌ Watcher error:', error);
 });
